@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://destiny.local/schemas/tavern-gateway-memory-bridge-v1.json",
+  "title": "Tavern Gateway Memory Bridge v1",
+  "type": "object",
+  "required": [
+    "protocol",
+    "version",
+    "generatedAt",
+    "chatId",
+    "character",
+    "generationType",
+    "floorCount",
+    "targetFloor",
+    "targetSwipeId",
+    "targetAssistantSeq",
+    "ledger",
+    "messages",
+    "coverage",
+    "mutations"
+  ],
+  "properties": {
+    "protocol": { "const": "tavern-gateway-memory-bridge" },
+    "version": { "const": 1 },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Browser capture time used to reject late stale manifests; never a floor-validity or revision-order authority."
+    },
+    "requestNonce": {
+      "type": "string",
+      "maxLength": 160,
+      "description": "One-shot capture identifier used to pair MESSAGE_RECEIVED with the boundary registered by this request."
+    },
+    "finalizeRequestNonce": {
+      "type": "string",
+      "maxLength": 160,
+      "description": "Sideband acknowledgement for the request whose settled floor is being reported."
+    },
+    "finalizedTargetFloor": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Actual MESSAGE_RECEIVED chat[] floor. On a sideband manifest targetFloor is rewritten to this settled floor."
+    },
+    "generationType": { "type": "string", "maxLength": 80 },
+    "endpoint": { "type": "string", "maxLength": 2048 },
+    "chatId": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "clientChatId": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "stateTarget": { "type": ["object", "null"] },
+    "character": {
+      "description": "Snapshot of the currently selected character, or null for chats without one.",
+      "anyOf": [
+        { "$ref": "#/$defs/character" },
+        { "type": "null" }
+      ]
+    },
+    "groupId": { "type": ["string", "null"] },
+    "floorCount": { "type": "integer", "minimum": 0 },
+    "lastFloor": { "type": "integer", "minimum": -1 },
+    "lastCompletedAssistantFloor": { "type": "integer", "minimum": -1 },
+    "latestUserFloor": { "type": "integer", "minimum": -1 },
+    "lastInContextMessageId": { "type": ["integer", "null"], "minimum": -1 },
+    "rawVisibleFromFloor": { "type": ["integer", "null"], "minimum": -1 },
+    "targetFloor": { "type": "integer", "minimum": 0 },
+    "targetSwipeId": { "type": "integer", "minimum": 0 },
+    "targetAssistantSeq": { "type": "integer", "minimum": 1 },
+    "ledger": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": { "$ref": "#/$defs/ledgerEntry" }
+    },
+    "messages": {
+      "type": "array",
+      "maxItems": 2000,
+      "items": { "$ref": "#/$defs/message" }
+    },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "reconcileMode": {
+      "enum": ["full-manifest", "full-manifest-before-recall"]
+    },
+    "mutationKind": { "type": "string", "maxLength": 80 },
+    "mutations": {
+      "type": "array",
+      "maxItems": 50,
+      "description": "Pending chat mutation hints from this browser tab. The ledger remains authoritative.",
+      "items": { "$ref": "#/$defs/mutation" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "character": {
+      "type": "object",
+      "required": ["id", "name", "avatar"],
+      "properties": {
+        "id": { "type": ["integer", "string", "null"] },
+        "name": { "type": "string", "maxLength": 300 },
+        "avatar": { "type": "string", "maxLength": 1000 }
+      },
+      "additionalProperties": false
+    },
+    "ledgerEntry": {
+      "type": "object",
+      "required": ["floor", "role", "isSystem", "swipeId", "hash", "textLength", "assistantSeq"],
+      "properties": {
+        "floor": { "type": "integer", "minimum": 0 },
+        "role": { "enum": ["user", "assistant"] },
+        "isSystem": { "type": "boolean" },
+        "swipeId": { "type": "integer", "minimum": 0 },
+        "hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}$",
+          "description": "FNV-1a 32-bit lowercase hex over UTF-8(role + NUL + isSystem(1/0) + NUL + normalized full active text)."
+        },
+        "textLength": { "type": "integer", "minimum": 0 },
+        "assistantSeq": { "type": ["integer", "null"], "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "object",
+      "required": ["floor", "role", "isSystem", "swipeId", "hash", "name", "text", "originalLength", "truncated"],
+      "properties": {
+        "floor": { "type": "integer", "minimum": 0 },
+        "role": { "enum": ["user", "assistant"] },
+        "isSystem": { "type": "boolean" },
+        "swipeId": { "type": "integer", "minimum": 0 },
+        "hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}$",
+          "description": "Same full-text floor hash as the corresponding ledger entry; it is computed before text truncation."
+        },
+        "name": { "type": "string", "maxLength": 300 },
+        "text": { "type": "string" },
+        "originalLength": { "type": "integer", "minimum": 0 },
+        "truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "description": "Exact floor and text-window bounds represented by this payload.",
+      "required": ["ledgerStartFloor", "ledgerEndFloor", "ledgerComplete", "messageStartFloor", "messageEndFloor", "totalTextChars"],
+      "properties": {
+        "ledgerStartFloor": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "First chat[] floor included in ledger, or 0 for an empty chat."
+        },
+        "ledgerEndFloor": {
+          "type": "integer",
+          "minimum": -1,
+          "description": "Last current chat[] floor; -1 for an empty chat."
+        },
+        "ledgerComplete": {
+          "type": "boolean",
+          "description": "True only when ledger begins at floor 0."
+        },
+        "messageStartFloor": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "First floor whose text is included, or null when messages is empty."
+        },
+        "messageEndFloor": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Last floor whose text is included, or null when messages is empty."
+        },
+        "totalTextChars": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sum of transmitted message text lengths after truncation."
+        }
+      },
+      "additionalProperties": false
+    },
+    "mutation": {
+      "type": "object",
+      "required": ["id", "kind", "at", "details"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "at": { "type": "string", "format": "date-time" },
+        "details": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,78 @@
+.tgm-bridge-settings .inline-drawer-content {
+    gap: 0.65rem;
+}
+
+.tgm-bridge-settings code {
+    overflow-wrap: anywhere;
+}
+
+.tgm-bridge-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tgm-bridge-row .flex1 {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.tgm-bridge-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+}
+
+.tgm-bridge-grid label {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.tgm-bridge-status {
+    margin: 0.35rem 0;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeBodyColor) 30%, transparent);
+    border-radius: 0.4rem;
+    background: color-mix(in srgb, var(--SmartThemeBlurTintColor) 72%, transparent);
+    overflow-wrap: anywhere;
+}
+
+.tgm-bridge-status[data-state='active'] {
+    border-color: color-mix(in srgb, #49c777 70%, transparent);
+}
+
+.tgm-bridge-status[data-state='warning'] {
+    border-color: color-mix(in srgb, #e8ad3c 75%, transparent);
+}
+
+.tgm-bridge-status[data-state='degraded'],
+.tgm-bridge-status[data-state='sending'] {
+    border-color: color-mix(in srgb, #e8ad3c 75%, transparent);
+}
+
+.tgm-bridge-status[data-state='error'] {
+    border-color: color-mix(in srgb, #e35d6a 75%, transparent);
+}
+
+.tgm-bridge-status[data-state='disabled'] {
+    opacity: 0.65;
+}
+
+.tgm-bridge-status[data-state='off'] {
+    opacity: 0.72;
+}
+
+.tgm-bridge-warning {
+    color: color-mix(in srgb, var(--SmartThemeBodyColor) 78%, #e8ad3c);
+}
+
+@media (max-width: 680px) {
+    .tgm-bridge-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .tgm-bridge-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}

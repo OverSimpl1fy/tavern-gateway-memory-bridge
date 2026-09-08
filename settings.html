@@ -1,0 +1,79 @@
+<div class="tgm-bridge-settings" data-extension-name="tavern-gateway-memory-bridge">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <b>Tavern Gateway 记忆桥</b>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <label class="checkbox_label" for="tgm-bridge-enabled">
+                <input id="tgm-bridge-enabled" type="checkbox">
+                <span>向匹配的本地网关注入真实楼层与 swipe 状态</span>
+            </label>
+
+            <div id="tgm-bridge-status" class="tgm-bridge-status" data-state="idle">等待下一次主对话生成。</div>
+
+            <p class="notes">
+                默认只匹配 <code>127.0.0.1</code>、<code>localhost</code> 或 <code>::1</code> 的
+                <code>3080/3180</code> 端口。聊天正文不会发送给其它上游。
+            </p>
+
+            <label for="tgm-bridge-endpoint-pattern">额外允许的 endpoint / reverse_proxy 正则</label>
+            <div class="tgm-bridge-row">
+                <input id="tgm-bridge-endpoint-pattern" class="text_pole flex1" type="text"
+                    placeholder="例如 ^https?://192\\.168\\.1\\.20:3080(?:/|$)">
+                <button id="tgm-bridge-reset-pattern" class="menu_button" type="button">仅本机</button>
+            </div>
+            <p class="notes tgm-bridge-warning">
+                自定义正则是明确的数据授权：任何被它匹配的地址都将收到楼层账本与所选正文窗口。
+            </p>
+
+            <div class="tgm-bridge-grid">
+                <label for="tgm-bridge-max-ledger">最多账本楼层
+                    <input id="tgm-bridge-max-ledger" class="text_pole" type="number" min="100" max="10000" step="100">
+                </label>
+                <label for="tgm-bridge-max-messages">最多正文消息
+                    <input id="tgm-bridge-max-messages" class="text_pole" type="number" min="20" max="2000" step="20">
+                </label>
+                <label for="tgm-bridge-max-message-chars">单条正文字符上限
+                    <input id="tgm-bridge-max-message-chars" class="text_pole" type="number" min="1024" max="100000" step="1024">
+                </label>
+                <label for="tgm-bridge-max-total-chars">正文总字符上限
+                    <input id="tgm-bridge-max-total-chars" class="text_pole" type="number" min="20000" max="2000000" step="10000">
+                </label>
+            </div>
+
+            <hr>
+            <label class="checkbox_label" for="tgm-bridge-sideband-enabled">
+                <input id="tgm-bridge-sideband-enabled" type="checkbox">
+                <span>可选：聊天变更后立即向 Dashboard 对账</span>
+            </label>
+            <div id="tgm-bridge-sideband-status" class="tgm-bridge-status" data-state="off">
+                实时对账未启用；下一次生成会携带完整楼层账本。
+            </div>
+            <label for="tgm-bridge-gateway-base-url">浏览器可访问的网关地址</label>
+            <input id="tgm-bridge-gateway-base-url" class="text_pole" type="url"
+                placeholder="例如 http://127.0.0.1:3180">
+            <label for="tgm-bridge-gateway-token">Dashboard Bearer token（仅当前标签页）</label>
+            <div class="tgm-bridge-row">
+                <input id="tgm-bridge-gateway-token" class="text_pole flex1" type="password"
+                    autocomplete="off" placeholder="不会写入 extension_settings">
+                <button id="tgm-bridge-clear-token" class="menu_button" type="button">清除令牌</button>
+                <button id="tgm-bridge-reconcile-now" class="menu_button" type="button">立即对账</button>
+            </div>
+            <p class="notes">
+                实时对账监听收到、更新、编辑、删除、切换/删除 swipe、切换/分支聊天事件。
+                未配置、跨域受阻或请求失败时只会降级为“下次生成前对账”，绝不会阻断正文生成。
+            </p>
+
+            <label class="checkbox_label" for="tgm-bridge-debug">
+                <input id="tgm-bridge-debug" type="checkbox">
+                <span>在开发者控制台输出桥接元数据（不会输出正文）</span>
+            </label>
+
+            <p class="notes">
+                本扩展不建立第二份记忆，也不修改聊天。它只在生成请求发出前提供真实 0-based 楼层、
+                active <code>swipe_id</code> 与正文哈希；记忆图仍由 Tavern Gateway 管理。
+            </p>
+        </div>
+    </div>
+</div>
