@@ -95,7 +95,9 @@ export function activeEndpointSettings(settings = {}) {
     // authorize sending the active cloud provider a copy of the chat ledger.
     if (source === 'custom') return { custom_url: settings.custom_url };
     if (source) return { reverse_proxy: settings.reverse_proxy, base_url: settings.base_url, endpoint: settings.endpoint, api_url: settings.api_url };
-    return Object.fromEntries(ENDPOINT_FIELDS.filter(field => field !== 'custom_url').map(field => [field, settings[field]]));
+    // A takeover may omit source but explicitly provide an endpoint. That
+    // address remains authoritative and must block fallback if it mismatches.
+    return Object.fromEntries(ENDPOINT_FIELDS.map(field => [field, settings[field]]));
 }
 
 function parseEndpoint(value) {

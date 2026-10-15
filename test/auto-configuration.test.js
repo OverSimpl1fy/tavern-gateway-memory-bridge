@@ -99,6 +99,9 @@ test('actual UI auto-fills LAN settings, saves pasted token and restores it afte
 
 test('actual hook injects LAN gateway and takeover requests, but never sends credentials or injects an unrelated endpoint', async () => {
     const h = await host();
+    const token = h.controls.get('#tgm-bridge-gateway-token');
+    token.value = 'fixture-secret';
+    token.listeners.input();
     const normal = { chat_completion_source: 'custom', custom_url: h.active.custom_url, messages: [{ role: 'user', content: '生成' }] };
     await h.api.onChatCompletionSettingsReady(normal);
     assert.equal(normal.gateway_memory.chatId, 'chat-fixture');
@@ -109,6 +112,9 @@ test('actual hook injects LAN gateway and takeover requests, but never sends cre
     const cloud = { chat_completion_source: 'custom', custom_url: 'https://cloud.example/v1', messages: [] };
     await h.api.onChatCompletionSettingsReady(cloud);
     assert.equal(cloud.gateway_memory, undefined);
+    const explicitWithoutSource = { custom_url: 'https://cloud.example/v1', messages: [] };
+    await h.api.onChatCompletionSettingsReady(explicitWithoutSource);
+    assert.equal(explicitWithoutSource.gateway_memory, undefined);
     assert.equal(JSON.stringify(normal).includes('fixture-secret'), false);
     h.active.chat_completion_source = 'openai';
     h.active.reverse_proxy = '';
