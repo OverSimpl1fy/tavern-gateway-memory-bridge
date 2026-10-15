@@ -5,16 +5,21 @@ import {
     matchGatewayEndpoint,
     mergeGatewayMemoryIntoCustomIncludeBody,
     normalizeSettings,
+    inferGatewayConfiguration,
+    activeEndpointSettings,
+    collectEndpointCandidates,
     resolveGenerationType,
     shouldSkipGenerationType,
 } from './bridge-core.js';
 import { extension_settings, getContext } from '../../../extensions.js';
 import { oai_settings } from '../../../openai.js';
 import { eventSource, event_types, saveSettingsDebounced } from '../../../../script.js';
+import { getCurrentUserHandle } from '../../../user.js';
+import { createTokenStore } from './token-store.js';
 
 const MODULE_NAME = 'tavern-gateway-memory-bridge';
-const VERSION = '1.1.0';
-const TOKEN_STORAGE_KEY = `${MODULE_NAME}:gateway-token`;
+const VERSION = '1.2.0';
+const tokenStore = createTokenStore({ persistent: () => localStorage, session: () => sessionStorage });
 const MUTATION_STORAGE_KEY = `${MODULE_NAME}:mutations-v1`;
 const MAX_MUTATIONS_PER_CHAT = 50;
 const MAX_MUTATION_CHATS = 20;
@@ -89,6 +94,61 @@ function getSettings() {
     const normalized = normalizeSettings(existing);
     extension_settings[MODULE_NAME] = { ...DEFAULT_SETTINGS, ...normalized };
     return extension_settings[MODULE_NAME];
+}
+
+function readGatewayToken() {
+    const settings = getSettings();
+    return tokenStore.read(getCurrentUserHandle(), settings.gatewayBaseUrl, settings.rememberToken);
+}
+
+function syncConnectionUi() {
+    const settings = getSettings();
+    const fields = {
+        '#tgm-bridge-endpoint-pattern': settings.endpointPattern,
+        '#tgm-bridge-gateway-base-url': settings.gatewayBaseUrl,
+        '#tgm-bridge-gateway-token': readGatewayToken(),
+    };
+    for (const [selector, value] of Object.entries(fields)) {
+        const element = document.querySelector(selector);
+        if (element) element.value = value;
+    }
+    const auto = document.querySelector('#tgm-bridge-auto-configure');
+    if (auto) auto.checked = settings.autoConfigure;
+}
+
+function autoConfigureGateway(force = false) {
+    const settings = getSettings();
+    const inferred = inferGatewayConfiguration(activeEndpointSettings(oai_settings), force ? { ...settings, autoConfigure: true, endpointPattern: '', gatewayBaseUrl: '' } : settings);
+    if (!inferred) return false;
+    const changed = Object.entries(inferred).some(([key, value]) => settings[key] !== value);
+    if (changed || force) {
+        Object.assign(settings, inferred, { autoConfigure: true });
+        saveSettingsDebounced();
+        syncConnectionUi();
+        updateStatus({ state: settings.enabled ? 'idle' : 'disabled', endpoint: inferred.gatewayBaseUrl, message: settings.enabled ? `v${VERSION} 已自动保存网关 ${inferred.gatewayBaseUrl}，基础桥接无需令牌；等待下一次生成确认楼层注入。` : '地址已保存，但桥接开关仍关闭。' });
+    }
+    return true;
+}
+
+async function checkConnection() {
+    autoConfigureGateway();
+    const settings = getSettings();
+    if (!settings.enabled) { updateStatus({ state: 'disabled', message: '桥接开关已关闭，请先启用。' }); return; }
+    if (!event_types.CHAT_COMPLETION_SETTINGS_READY) { updateStatus({ state: 'error', message: '酒馆缺少生成前事件，请先更新 Luker。' }); return; }
+    const match = matchGatewayEndpoint(activeEndpointSettings(oai_settings), settings.endpointPattern);
+    if (!match.matched) { updateStatus({ state: 'warning', message: match.error || '尚未匹配网关：在模型连接里选择本地网关，或手动填写额外允许的地址。' }); return; }
+    const token = readGatewayToken();
+    if (!token) { updateStatus({ state: 'idle', endpoint: match.value, message: `v${VERSION} 桥接配置就绪；下一次生成会显示“已注入”。基础桥接无需令牌；即时对账如需启用，首次填写 Dashboard 令牌即可保存。` }); return; }
+    const url = normalizedGatewayBaseUrl(settings.gatewayBaseUrl);
+    if (!url || url.username || url.password) { updateStatus({ state: 'warning', message: '实时对账地址无效。' }); return; }
+    try {
+        const response = await fetch(new URL('/gateway/health', url), { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', signal: AbortSignal.timeout(10000) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const health = await response.json();
+        updateStatus({ state: 'idle', message: `v${VERSION} 网关可达${health.version ? `（${health.version}）` : ''}；地址及令牌已保存，等待下一次生成确认注入。` });
+    } catch (error) {
+        updateStatus({ state: 'warning', message: `连接检查失败：${String(error?.message || error)}。请确认地址、令牌及手机到电脑的连接；基础桥接仍会随生成请求发送。` });
+    }
 }
 
 function legacyMemoryGraphIsEnabled() {
@@ -291,16 +351,17 @@ function normalizedGatewayBaseUrl(value) {
 }
 
 async function postSidebandReconcile(chatId, mutationKind, finalize = null) {
+    autoConfigureGateway();
     const settings = getSettings();
     if (!settings.sidebandEnabled) return;
     const gatewayBase = normalizedGatewayBaseUrl(settings.gatewayBaseUrl);
-    const token = readSessionValue(TOKEN_STORAGE_KEY).replace(/^Bearer\s+/i, '').trim();
+    const token = readGatewayToken();
     if (!gatewayBase || !token) {
         updateStatus({
             sidebandState: 'degraded',
             sidebandMessage: !gatewayBase
                 ? '最终一致性降级：请填写有效的 http(s) 网关地址；下一次生成仍会完整对账。'
-                : '最终一致性降级：本标签页没有 Bearer token；下一次生成仍会完整对账。',
+                : '尚未保存此网关的 Dashboard 令牌；基础桥接无需令牌，下一次生成仍会完整对账。',
         });
         return;
     }
@@ -432,6 +493,8 @@ async function onChatCompletionSettingsReady(generateData) {
     try {
         const settings = getSettings();
         if (!settings.enabled) return;
+        autoConfigureGateway();
+        Object.assign(settings, getSettings());
         if (startedGeneration?.dryRun === true) return;
 
         const generationType = resolveGenerationType(generateData?.type, startedGeneration?.type);
@@ -440,18 +503,15 @@ async function onChatCompletionSettingsReady(generateData) {
             return;
         }
 
-        let endpointMatch = matchGatewayEndpoint(generateData, settings.endpointPattern);
-        if (!endpointMatch.matched && !endpointMatch.error) {
+        const requestEndpoints = activeEndpointSettings(generateData);
+        let endpointMatch = matchGatewayEndpoint(requestEndpoints, settings.endpointPattern);
+        const endpointWasDeclared = Object.keys(requestEndpoints).some(key => Object.hasOwn(generateData, key));
+        if (!endpointMatch.matched && !endpointMatch.error && !endpointWasDeclared && collectEndpointCandidates(requestEndpoints).length === 0) {
             // Luker's takeover compatibility event intentionally contains only
             // `{ messages }`. Consult the active OpenAI settings so endpoint
             // authorization remains strict without requiring the hook to leak
             // unrelated request options.
-            endpointMatch = matchGatewayEndpoint({
-                reverse_proxy: oai_settings?.reverse_proxy,
-                base_url: oai_settings?.base_url,
-                custom_url: oai_settings?.custom_url,
-                endpoint: settings.gatewayBaseUrl,
-            }, settings.endpointPattern);
+            endpointMatch = matchGatewayEndpoint(activeEndpointSettings(oai_settings), settings.endpointPattern);
         }
         if (!endpointMatch.matched) {
             if (endpointMatch.error) {
@@ -568,6 +628,7 @@ function updateNumberSetting(id, key) {
 }
 
 function bindSettingsUi() {
+    autoConfigureGateway();
     const settings = getSettings();
     const enabled = document.querySelector('#tgm-bridge-enabled');
     const endpointPattern = document.querySelector('#tgm-bridge-endpoint-pattern');
@@ -591,6 +652,7 @@ function bindSettingsUi() {
         endpointPattern.value = settings.endpointPattern;
         endpointPattern.addEventListener('change', () => {
             getSettings().endpointPattern = endpointPattern.value.trim();
+            getSettings().autoConfigure = false;
             Object.assign(getSettings(), normalizeSettings(getSettings()));
             endpointPattern.value = getSettings().endpointPattern;
             saveSettingsDebounced();
@@ -621,9 +683,11 @@ function bindSettingsUi() {
         gatewayBaseUrl.value = settings.gatewayBaseUrl;
         gatewayBaseUrl.addEventListener('change', () => {
             getSettings().gatewayBaseUrl = gatewayBaseUrl.value.trim();
+            getSettings().autoConfigure = false;
             Object.assign(getSettings(), normalizeSettings(getSettings()));
             gatewayBaseUrl.value = getSettings().gatewayBaseUrl;
             saveSettingsDebounced();
+            syncConnectionUi();
             const valid = normalizedGatewayBaseUrl(getSettings().gatewayBaseUrl);
             updateStatus({
                 sidebandState: valid ? 'idle' : 'degraded',
@@ -634,14 +698,20 @@ function bindSettingsUi() {
         });
     }
     if (gatewayToken) {
-        gatewayToken.value = readSessionValue(TOKEN_STORAGE_KEY);
-        gatewayToken.addEventListener('change', () => {
-            const saved = writeSessionValue(TOKEN_STORAGE_KEY, gatewayToken.value.trim());
+        gatewayToken.value = readGatewayToken();
+        gatewayToken.addEventListener('input', () => {
+            const current = getSettings();
+            const saved = tokenStore.write(getCurrentUserHandle(), current.gatewayBaseUrl, gatewayToken.value, current.rememberToken);
+            if (gatewayToken.value.trim() && !current.sidebandEnabled) {
+                current.sidebandEnabled = true;
+                if (sidebandEnabled) sidebandEnabled.checked = true;
+                saveSettingsDebounced();
+            }
             updateStatus({
                 sidebandState: saved ? 'idle' : 'degraded',
                 sidebandMessage: saved
-                    ? 'Bearer token 仅保存于当前标签页，等待聊天变更。'
-                    : '浏览器拒绝 sessionStorage；实时对账无法保存 token。',
+                    ? (gatewayToken.value.trim() ? (current.rememberToken ? '令牌已按账号与网关保存在当前浏览器，刷新自动填回。' : '令牌仅在当前标签页保留。') : '已清除保存的令牌。')
+                    : '令牌未能持久保存，本次仍可使用；请检查浏览器存储权限与网关地址。',
             });
         });
     }
@@ -664,22 +734,53 @@ function bindSettingsUi() {
     const resetPattern = document.querySelector('#tgm-bridge-reset-pattern');
     resetPattern?.addEventListener('click', () => {
         getSettings().endpointPattern = '';
+        getSettings().autoConfigure = false;
+        getSettings().gatewayBaseUrl = '';
+        getSettings().autoConfiguredOrigin = '';
         if (endpointPattern) endpointPattern.value = '';
         saveSettingsDebounced();
+        syncConnectionUi();
         updateStatus({ state: 'idle', message: '已恢复仅允许本机 3080/3180。' });
     });
 
     const clearToken = document.querySelector('#tgm-bridge-clear-token');
     clearToken?.addEventListener('click', () => {
-        writeSessionValue(TOKEN_STORAGE_KEY, '');
+        tokenStore.clear(getCurrentUserHandle(), getSettings().gatewayBaseUrl);
         if (gatewayToken) gatewayToken.value = '';
         updateStatus({
             sidebandState: settings.sidebandEnabled ? 'degraded' : 'off',
             sidebandMessage: settings.sidebandEnabled
-                ? '最终一致性降级：Bearer token 已从当前标签页清除。'
-                : 'Bearer token 已从当前标签页清除。',
+                ? '令牌已从本浏览器与标签页清除；下一次生成仍会完整对账。'
+                : '令牌已从本浏览器与标签页清除。',
         });
     });
+
+    const rememberToken = document.querySelector('#tgm-bridge-remember-token');
+    if (rememberToken) {
+        rememberToken.checked = settings.rememberToken;
+        rememberToken.addEventListener('change', () => {
+            const current = getSettings();
+            const token = readGatewayToken();
+            current.rememberToken = rememberToken.checked;
+            tokenStore.write(getCurrentUserHandle(), current.gatewayBaseUrl, token, current.rememberToken);
+            saveSettingsDebounced();
+            updateStatus({ sidebandMessage: current.rememberToken ? '令牌将按账号与网关保存在此浏览器。' : '已删除持久令牌，仅本标签页保留。' });
+        });
+    }
+    const autoConfigure = document.querySelector('#tgm-bridge-auto-configure');
+    if (autoConfigure) {
+        autoConfigure.checked = settings.autoConfigure;
+        autoConfigure.addEventListener('change', () => {
+            getSettings().autoConfigure = autoConfigure.checked;
+            saveSettingsDebounced();
+            if (autoConfigure.checked) autoConfigureGateway(true);
+        });
+    }
+    document.querySelector('#tgm-bridge-auto-fill')?.addEventListener('click', () => {
+        if (!autoConfigureGateway(true)) updateStatus({ state: 'warning', message: '未从模型连接中找到本机或内网 3080/3180 网关；请先配置连接，或手动填写地址。' });
+        syncConnectionUi();
+    });
+    document.querySelector('#tgm-bridge-check-connection')?.addEventListener('click', checkConnection);
 
     const reconcileNow = document.querySelector('#tgm-bridge-reconcile-now');
     reconcileNow?.addEventListener('click', () => {
@@ -716,7 +817,7 @@ async function loadSettingsUi() {
     }
 }
 
-getSettings();
+autoConfigureGateway();
 if (event_types.GENERATION_STARTED) {
     eventSource.on(event_types.GENERATION_STARTED, onGenerationStarted);
 }

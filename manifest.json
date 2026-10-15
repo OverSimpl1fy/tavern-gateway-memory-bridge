@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "Destiny",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "homePage": "",
   "auto_update": true,
   "description": "将酒馆真实聊天楼层与 active swipe 信息安全桥接到本地 Tavern Gateway。"

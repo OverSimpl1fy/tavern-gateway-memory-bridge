@@ -1,5 +1,13 @@
 # Tavern Gateway Memory Bridge
 
+## 1.2.0：自动连接与记住令牌
+
+更新后刷新页面，在“扩展→Tavern Gateway记忆桥”确认版本1.2.0及启用开关。默认从当前模型连接识别本机/内网3080或3180网关，自动填写并保存网关地址及精确匹配规则；点击“自动填写”可重新识别，手动配置不会被自动覆盖。“检查配置与连接”显示未启用、地址不匹配、准备就绪或实际连接失败。生成后应显示“已注入：楼层…”，网关不再是bridge_required。
+
+基础桥接不需要令牌。可选即时对账的Dashboard令牌首次填写后自动启用对账并保存；默认按酒馆账号和网关origin隔离在本浏览器，刷新后填回，不会向更换后的地址复用旧令牌。关闭“记住令牌”可改为仅当前标签页；清除或删空会删除保存值。不会读取模型密钥或其它插件令牌，更换设备/浏览器或清理站点数据后需重新填写。
+
+不运行第二份记忆图。删除、swipe、重生成仍按真实楼层与完整哈希核对；未启用即时对账时，下一次生成前仍会提交完整manifest。
+
 这是一个可远程安装的 SillyTavern / Luker 第三方扩展。它不在浏览器里另建记忆库，而是在主对话生成请求发出前，把酒馆掌握的真实聊天坐标交给 Tavern Gateway：
 
 - 当前真实 `chatId` 与 Luker `resolveChatStateTarget()`；
@@ -26,7 +34,7 @@
 
 ## 安全边界
 
-默认仅当请求中的 `endpoint`、`reverse_proxy`、`base_url` 或 `custom_url` 指向以下地址之一时才注入：
+关闭自动配置且没有手动授权时，仅当请求中的 `endpoint`、`reverse_proxy`、`base_url` 或 `custom_url` 指向以下地址之一时才注入：
 
 ```text
 http(s)://127.0.0.1:3080/...
@@ -37,20 +45,20 @@ http(s)://[::1]:3080/...
 http(s)://[::1]:3180/...
 ```
 
-局域网或域名部署需要在设置里显式填写额外允许的正则。该正则就是数据授权范围，请不要写成 `.*`。扩展不会读取或发送 API 密钥，不会把正文写入浏览器持久存储，调试日志也只包含数量、楼层和 endpoint。
+1.2.0默认从当前活动连接自动识别本机及RFC1918内网的3080/3180端口，保存该origin的精确正则，不授权所有内网地址。域名、其他端口或手动模式可在设置里填写额外允许的正则。该正则就是数据授权范围，请不要写成 `.*`。扩展不会读取或发送 API 密钥，不会把正文写入浏览器持久存储，调试日志也只包含数量、楼层和 endpoint。
 
 桥接消息中的 Base64URL 只是传输编码，不是加密。匹配的网关会收到设置所覆盖的正文窗口。
 
 ### 可选实时对账
 
-如需在没有新生成时也让 Dashboard 及时反映删除和 swipe，可启用“聊天变更后立即向 Dashboard 对账”，填写浏览器可访问的网关地址和 Bearer token。扩展会监听：
+如需在没有新生成时也让 Dashboard 及时反映删除和 swipe，可填写Dashboard Bearer token；新版会启用“聊天变更后立即向 Dashboard 对账”。网关地址随自动配置保存，也可手填。扩展会监听：
 
 - `MESSAGE_RECEIVED` / `MESSAGE_UPDATED` / `MESSAGE_EDITED`；
 - `MESSAGE_DELETED`；
 - `MESSAGE_SWIPED` / `MESSAGE_SWIPE_DELETED`；
 - `CHAT_CHANGED` / `CHAT_BRANCH_CREATED`。
 
-它向 `<gatewayBaseUrl>/gateway/memory/reconcile` POST 当前完整桥接 payload，并以 `mutationKind` / `mutations` 说明触发原因。只有 `MESSAGE_RECEIVED` 会额外携带 `finalizeRequestNonce` 与 `finalizedTargetFloor`，把酒馆实际落盘的 assistant 层与生成请求一一对应；`MESSAGE_UPDATED` 不发 sideband。token 只保存在 `sessionStorage`，不会进入 `extension_settings`、Git 文件或调试日志；关闭标签页后由浏览器清除。未配置 token、CORS 阻止、网关离线、90 秒超时或接口失败时，扩展显示“最终一致性降级”，不抛错、不阻断生成，下一次生成的内嵌 payload 仍会对账。
+它向 `<gatewayBaseUrl>/gateway/memory/reconcile` POST 当前完整桥接 payload，并以 `mutationKind` / `mutations` 说明触发原因。只有 `MESSAGE_RECEIVED` 会额外携带 `finalizeRequestNonce` 与 `finalizedTargetFloor`，把酒馆实际落盘的 assistant 层与生成请求一一对应；`MESSAGE_UPDATED` 不发 sideband。令牌默认保存在当前浏览器的 `localStorage`，键按酒馆账号与网关origin隔离；关闭“记住令牌”会删除持久值，仅在 `sessionStorage`/本页内存保留。令牌不会进入 `extension_settings`、预设、聊天、Git文件或调试日志。存储被拒绝时本次仍可使用并提示无法持久化。未配置 token、CORS 阻止、网关离线、90 秒超时或接口失败时，扩展显示“最终一致性降级”，不抛错、不阻断生成，下一次生成的内嵌 payload 仍会对账。
 
 ## 双通道传输
 

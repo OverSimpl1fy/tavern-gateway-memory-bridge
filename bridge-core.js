@@ -5,6 +5,9 @@ export const MARKER_SUFFIX = ' -->';
 
 export const DEFAULT_SETTINGS = Object.freeze({
     enabled: true,
+    autoConfigure: true,
+    autoConfiguredOrigin: '',
+    rememberToken: true,
     endpointPattern: '',
     maxLedgerEntries: 5000,
     maxTextMessages: 240,
@@ -46,6 +49,9 @@ export function normalizeSettings(raw = {}) {
     const maxLedgerEntries = clampInteger(settings.maxLedgerEntries, DEFAULT_SETTINGS.maxLedgerEntries, 100, 10000);
     return {
         enabled: settings.enabled !== false,
+        autoConfigure: settings.autoConfigure !== false,
+        autoConfiguredOrigin: safeString(settings.autoConfiguredOrigin, 2048).trim(),
+        rememberToken: settings.rememberToken !== false,
         endpointPattern: safeString(settings.endpointPattern, 512).trim(),
         maxLedgerEntries,
         maxTextMessages: Math.min(
@@ -83,6 +89,15 @@ export function collectEndpointCandidates(generateData = {}) {
     return candidates;
 }
 
+export function activeEndpointSettings(settings = {}) {
+    const source = safeString(settings.chat_completion_source, 80).toLowerCase();
+    // Inactive connection fields can retain an old gateway URL. They must not
+    // authorize sending the active cloud provider a copy of the chat ledger.
+    if (source === 'custom') return { custom_url: settings.custom_url };
+    if (source) return { reverse_proxy: settings.reverse_proxy, base_url: settings.base_url, endpoint: settings.endpoint, api_url: settings.api_url };
+    return Object.fromEntries(ENDPOINT_FIELDS.filter(field => field !== 'custom_url').map(field => [field, settings[field]]));
+}
+
 function parseEndpoint(value) {
     const raw = safeString(value, 2048).trim();
     if (!raw) return null;
@@ -106,6 +121,32 @@ export function isDefaultGatewayEndpoint(value) {
         || hostname === '::1'
         || hostname === '[::1]';
     return isLoopback && (url.port === '3080' || url.port === '3180');
+}
+
+export function inferGatewayConfiguration(activeSettings = {}, rawSettings = {}) {
+    const settings = normalizeSettings(rawSettings);
+    if (!settings.autoConfigure) return null;
+    // Preserve pre-existing manually authorized addresses/patterns.
+    if (!settings.autoConfiguredOrigin && (settings.endpointPattern || settings.gatewayBaseUrl)) return null;
+    const candidates = [activeSettings.custom_url, activeSettings.reverse_proxy, activeSettings.base_url];
+    for (const candidate of candidates) {
+        const url = parseEndpoint(candidate);
+        if (!url || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) continue;
+        if (!['3080', '3180'].includes(url.port)) continue;
+        const host = url.hostname.toLowerCase();
+        const parts = host.split('.').map(Number);
+        const ipv4 = /^\d+\.\d+\.\d+\.\d+$/.test(host) && parts.every(n => Number.isInteger(n) && n >= 0 && n <= 255);
+        const privateIpv4 = ipv4 && (parts[0] === 10 || (parts[0] === 192 && parts[1] === 168) || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31));
+        if (!privateIpv4 && !isDefaultGatewayEndpoint(url.toString())) continue;
+        const origin = url.origin;
+        const escaped = origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return {
+            gatewayBaseUrl: origin,
+            endpointPattern: `^${escaped}(?:/|$)`,
+            autoConfiguredOrigin: origin,
+        };
+    }
+    return null;
 }
 
 export function matchGatewayEndpoint(generateData, endpointPattern = '') {

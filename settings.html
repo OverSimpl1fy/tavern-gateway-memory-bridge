@@ -1,7 +1,7 @@
 <div class="tgm-bridge-settings" data-extension-name="tavern-gateway-memory-bridge">
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b>Tavern Gateway 记忆桥</b>
+            <b>Tavern Gateway 记忆桥 · 1.2.0</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
@@ -12,9 +12,18 @@
 
             <div id="tgm-bridge-status" class="tgm-bridge-status" data-state="idle">等待下一次主对话生成。</div>
 
+            <label class="checkbox_label" for="tgm-bridge-auto-configure">
+                <input id="tgm-bridge-auto-configure" type="checkbox">
+                <span>从当前模型连接自动填写并保存网关地址</span>
+            </label>
+            <div class="tgm-bridge-row">
+                <button id="tgm-bridge-auto-fill" class="menu_button" type="button">自动填写</button>
+                <button id="tgm-bridge-check-connection" class="menu_button" type="button">检查配置与连接</button>
+            </div>
+
             <p class="notes">
-                默认只匹配 <code>127.0.0.1</code>、<code>localhost</code> 或 <code>::1</code> 的
-                <code>3080/3180</code> 端口。聊天正文不会发送给其它上游。
+                自动识别当前连接中本机或内网 <code>3080/3180</code> 网关，只保存该地址的精确匹配规则。
+                基础楼层桥接无需令牌。域名或其它端口可手动配置；手动填写后关闭自动覆盖。
             </p>
 
             <label for="tgm-bridge-endpoint-pattern">额外允许的 endpoint / reverse_proxy 正则</label>
@@ -53,14 +62,19 @@
             <label for="tgm-bridge-gateway-base-url">浏览器可访问的网关地址</label>
             <input id="tgm-bridge-gateway-base-url" class="text_pole" type="url"
                 placeholder="例如 http://127.0.0.1:3180">
-            <label for="tgm-bridge-gateway-token">Dashboard Bearer token（仅当前标签页）</label>
+            <label for="tgm-bridge-gateway-token">Dashboard Bearer token（即时对账首次填写）</label>
             <div class="tgm-bridge-row">
                 <input id="tgm-bridge-gateway-token" class="text_pole flex1" type="password"
                     autocomplete="off" placeholder="不会写入 extension_settings">
                 <button id="tgm-bridge-clear-token" class="menu_button" type="button">清除令牌</button>
                 <button id="tgm-bridge-reconcile-now" class="menu_button" type="button">立即对账</button>
             </div>
+            <label class="checkbox_label" for="tgm-bridge-remember-token">
+                <input id="tgm-bridge-remember-token" type="checkbox">
+                <span>在此浏览器记住令牌（按酒馆账号和网关隔离，刷新自动填回）</span>
+            </label>
             <p class="notes">
+                填写令牌会启用即时对账；清除或删空即可删除保存值。令牌不进入服务器设置、预设或聊天，地址变化后不会向新地址复用旧令牌。
                 实时对账监听收到、更新、编辑、删除、切换/删除 swipe、切换/分支聊天事件。
                 未配置、跨域受阻或请求失败时只会降级为“下次生成前对账”，绝不会阻断正文生成。
             </p>
