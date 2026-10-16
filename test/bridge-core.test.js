@@ -146,6 +146,31 @@ test('settled sideband payload targets MESSAGE_RECEIVED floor, not the next futu
     assert.equal(payload.ledger[1].hash, payload.messages[1].hash);
 });
 
+test('ordinary generation after an assistant opening never treats missing acknowledgement as floor zero', async () => {
+    const chat = [{ is_user: false, mes: 'Opening', swipe_id: 1 }, { is_user: true, mes: 'Next' }];
+    for (const empty of [undefined, null, '', '   ', false, [], {}]) {
+        const payload = await buildGatewayMemoryPayload({ chat, generationType: 'normal', finalizedTargetFloor: empty });
+        assert.equal(payload.targetFloor, 2);
+        assert.equal(payload.targetSwipeId, 0);
+        assert.equal(payload.targetAssistantSeq, 2);
+        assert.equal(payload.lastInContextMessageId, null);
+    }
+});
+
+test('floor zero is legal only when explicitly acknowledged; normal and swipe preserve their own anchors', async () => {
+    const chat = [{ is_user: false, mes: 'Opening', swipe_id: 1 }, { is_user: true, mes: 'Next' }, { is_user: false, mes: 'Reply', swipe_id: 3 }];
+    const ack = await buildGatewayMemoryPayload({ chat, generationType: 'reconcile', finalizedTargetFloor: 0 });
+    assert.equal(ack.targetFloor, 0); assert.equal(ack.targetSwipeId, 1);
+    const normal = await buildGatewayMemoryPayload({ chat, generationType: 'normal', finalizedTargetFloor: 0 });
+    assert.equal(normal.targetFloor, 3);
+    const swipe = await buildGatewayMemoryPayload({ chat, generationType: 'swipe' });
+    assert.equal(swipe.targetFloor, 2); assert.equal(swipe.targetSwipeId, 3);
+    const continuation = await buildGatewayMemoryPayload({ chat, generationType: 'continue' });
+    assert.equal(continuation.targetFloor, 2);
+    const placeholder = await buildGatewayMemoryPayload({ chat: [...chat.slice(0, 2), { is_user: false, mes: '', swipe_id: 2 }], generationType: 'normal' });
+    assert.equal(placeholder.targetFloor, 2); assert.equal(placeholder.targetSwipeId, 2);
+});
+
 test('payload hashes the normalized complete active body, never its truncated copy', async () => {
     const body = `  第一行\r\n${'x'.repeat(2000)}  `;
     const payload = await buildGatewayMemoryPayload({

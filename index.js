@@ -18,7 +18,7 @@ import { getCurrentUserHandle } from '../../../user.js';
 import { createTokenStore } from './token-store.js';
 
 const MODULE_NAME = 'tavern-gateway-memory-bridge';
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const tokenStore = createTokenStore({ persistent: () => localStorage, session: () => sessionStorage });
 const MUTATION_STORAGE_KEY = `${MODULE_NAME}:mutations-v1`;
 const MAX_MUTATIONS_PER_CHAT = 50;

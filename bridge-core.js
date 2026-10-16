@@ -344,6 +344,8 @@ function truncateText(text, maximum) {
 }
 
 function normalizeMessageId(value) {
+    if (value === null || value === undefined || (typeof value !== 'number' && typeof value !== 'string')) return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed >= -1 ? parsed : null;
 }
@@ -397,7 +399,7 @@ export async function buildGatewayMemoryPayload({
 
     const ledgerByFloor = new Map(ledger.map(entry => [entry.floor, entry]));
     const finalizedFloor = normalizeMessageId(finalizedTargetFloor);
-    if (finalizedFloor !== null && finalizedFloor >= 0 && finalizedFloor < chat.length) {
+    if (generation.toLowerCase() === 'reconcile' && finalizedFloor !== null && finalizedFloor >= 0 && finalizedFloor < chat.length) {
         const finalizedMessage = chat[finalizedFloor];
         const finalizedLedger = ledgerByFloor.get(finalizedFloor);
         if (finalizedMessage?.is_user !== true && finalizedLedger) {
