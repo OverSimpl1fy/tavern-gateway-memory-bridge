@@ -1,7 +1,7 @@
 <div class="tgm-bridge-settings" data-extension-name="tavern-gateway-memory-bridge">
     <div class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
-            <b>Tavern Gateway 记忆桥 · 1.2.1</b>
+            <b>Tavern Gateway 记忆桥 · 1.3.0</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
         </div>
         <div class="inline-drawer-content">
@@ -79,14 +79,46 @@
                 未配置、跨域受阻或请求失败时只会降级为“下次生成前对账”，绝不会阻断正文生成。
             </p>
 
+            <hr>
+            <div id="tgm-memory-status" class="tgm-bridge-status">等待记忆对账；旧楼层默认全部保留。</div>
+            <label for="tgm-memory-world">当前聊天所属世界（首次补建必选，按聊天保存）</label>
+            <select id="tgm-memory-world" class="text_pole">
+                <option value="">请选择／已有聊天可先刷新状态</option>
+                <option value="德尔菲安-欲潮行旅">欲潮行旅</option>
+                <option value="德尔菲安-欲潮学院">欲潮学院</option>
+                <option value="德尔菲安-欲潮涌动">欲潮涌动</option>
+                <option value="命定之诗">命定之诗</option>
+                <option value="临空市">临空市</option>
+                <option value="悦悦">悦悦</option>
+                <option value="万象工坊">万象工坊</option>
+            </select>
+            <div class="tgm-bridge-row">
+                <button id="tgm-memory-backfill" class="menu_button" type="button">补建当前聊天历史／暂停</button>
+                <button id="tgm-memory-refresh" class="menu_button" type="button">刷新记忆状态</button>
+            </div>
+            <p class="notes">补建会分批调用网关的记忆模型，按已保存的最新 AI 回复为终点；可继续正常对话。再次点击可暂停后续批次，关闭页面后可稍后继续。补建与手机同步需要已保存的 Dashboard 令牌，不需要另一个模型令牌。</p>
+            <label for="tgm-memory-omit-through">用记忆替换第0楼至以下楼层（含该楼；留空停用）</label>
+            <input id="tgm-memory-omit-through" class="text_pole" type="number" min="0" step="1" placeholder="留空：保留全部原文">
+            <p class="notes">只改变下次发送的历史。所选范围须已有完整梗概，且来源与当前楼层一致；否则继续发送原文。原聊天、显示和 MVU 变量不删除。楼层按酒馆真实编号计数，0也表示替换第0楼。</p>
+            <label class="checkbox_label" for="tgm-memory-clean-history">
+                <input id="tgm-memory-clean-history" type="checkbox">
+                <span>发送历史时清除旧规划、书页、堕落校验、变量补丁和选项</span>
+            </label>
+            <label class="checkbox_label" for="tgm-memory-native-mirror">
+                <input id="tgm-memory-native-mirror" type="checkbox">
+                <span>完成后同步到 Luker 原生“记忆”图，仅供查看</span>
+            </label>
+            <div id="tgm-memory-mirror-status" class="tgm-bridge-status">手机镜像等待第一份有效记忆。</div>
+            <p class="notes">关闭 Luker 记忆的“启用”和“自动抽取”，让网关独立生成并注入，避免重复提取与召回。图和关系边按原样展示；原始节点类型、字段保留在详情中。已有其它原生记忆时暂停镜像并提示，不覆盖你的手动内容。</p>
+
             <label class="checkbox_label" for="tgm-bridge-debug">
                 <input id="tgm-bridge-debug" type="checkbox">
                 <span>在开发者控制台输出桥接元数据（不会输出正文）</span>
             </label>
 
             <p class="notes">
-                本扩展不建立第二份记忆，也不修改聊天。它只在生成请求发出前提供真实 0-based 楼层、
-                active <code>swipe_id</code> 与正文哈希；记忆图仍由 Tavern Gateway 管理。
+                记忆由 Tavern Gateway 管理；手机只保存展示镜像。真实 0-based 楼层、
+                active <code>swipe_id</code> 与完整正文哈希用于校验重Roll和删楼，原聊天不变。
             </p>
         </div>
     </div>

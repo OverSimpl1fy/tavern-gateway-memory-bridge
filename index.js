@@ -16,9 +16,10 @@ import { oai_settings } from '../../../openai.js';
 import { eventSource, event_types, saveSettingsDebounced } from '../../../../script.js';
 import { getCurrentUserHandle } from '../../../user.js';
 import { createTokenStore } from './token-store.js';
+import { createMemoryFeatures } from './memory-features.js';
 
 const MODULE_NAME = 'tavern-gateway-memory-bridge';
-const VERSION = '1.2.1';
+const VERSION = '1.3.0';
 const tokenStore = createTokenStore({ persistent: () => localStorage, session: () => sessionStorage });
 const MUTATION_STORAGE_KEY = `${MODULE_NAME}:mutations-v1`;
 const MAX_MUTATIONS_PER_CHAT = 50;
@@ -417,7 +418,7 @@ async function postSidebandReconcile(chatId, mutationKind, finalize = null) {
         const responseBody = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const finalizeStatus = String(responseBody?.finalizeStatus || 'no-pending');
-        if (!['finalized', 'superseded', 'no-pending', 'deferred'].includes(finalizeStatus)) {
+        if (!['finalized', 'superseded', 'no-pending', 'deferred', 'queued'].includes(finalizeStatus)) {
             throw new Error(`unexpected finalize status: ${finalizeStatus}`);
         }
         if (finalizeStatus !== 'deferred') {
@@ -428,6 +429,7 @@ async function postSidebandReconcile(chatId, mutationKind, finalize = null) {
             sidebandState: 'active',
             sidebandMessage: `实时对账成功：${mutationKind}，${payload.ledger.length} 个楼层；记忆边界 ${finalizeStatus}。`,
         });
+        void memoryFeatures.accept(responseBody, context);
     } catch (error) {
         const reason = error?.name === 'AbortError' ? '请求超时' : String(error?.message || error);
         updateStatus({
@@ -469,6 +471,7 @@ function onChatMutation(kind, ...args) {
         // diagnostic only: publishing it as a newer manifest used to race the
         // final response and make a correct bridge look stale.
         if (kind === 'message-updated') return;
+        memoryFeatures.changed();
         let finalize = null;
         if (kind === 'message-received' && Number.isInteger(Number(details.messageId))) {
             const targetFloor = Number(details.messageId);
@@ -514,6 +517,7 @@ async function onChatCompletionSettingsReady(generateData) {
             endpointMatch = matchGatewayEndpoint(activeEndpointSettings(oai_settings), settings.endpointPattern);
         }
         if (!endpointMatch.matched) {
+            if (memoryFeatures.hasAppliedCut(getContext())) throw new Error('当前请求地址与旧楼层替换时的网关不一致，已阻止发送；关闭替换后可重试。');
             if (endpointMatch.error) {
                 updateStatus({ state: 'warning', message: endpointMatch.error, endpoint: '' });
             } else {
@@ -552,6 +556,7 @@ async function onChatCompletionSettingsReady(generateData) {
         payload.reconcileMode = 'full-manifest-before-recall';
         payload.mutationKind = 'generation-request';
         payload.mutations = rememberedMutations(payload.chatId);
+        memoryFeatures.attachCut(payload, context);
         rememberOpenRequest(payload);
 
         // Channel 1: preserved in the browser -> Luker request. A patched or
@@ -599,6 +604,9 @@ async function onChatCompletionSettingsReady(generateData) {
         }
     } catch (error) {
         // A diagnostics bridge must never make the user's generation fail.
+        // Once history was deliberately omitted, silently losing its bridge
+        // would instead send an incomplete story. Fail before model dispatch.
+        if (memoryFeatures.hasAppliedCut(getContext())) throw new Error(`旧楼层替换未能附带完整桥接，已阻止不完整请求：${String(error?.message || error)}`);
         console.error(`[${MODULE_NAME}] bridge injection failed`, error);
         updateStatus({
             state: 'error',
@@ -608,6 +616,7 @@ async function onChatCompletionSettingsReady(generateData) {
 }
 
 function onGenerationStarted(type, _params, dryRun) {
+    memoryFeatures.changed();
     pendingGeneration = {
         type: resolveGenerationType(type),
         dryRun: dryRun === true,
@@ -802,6 +811,7 @@ function bindSettingsUi() {
     });
 
     updateStatus(lastStatus);
+    memoryFeatures.bindUi();
 }
 
 async function loadSettingsUi() {
@@ -817,6 +827,15 @@ async function loadSettingsUi() {
     }
 }
 
+const memoryFeatures = createMemoryFeatures({
+    getSettings, getContext, currentIdentity, readToken: readGatewayToken, now: monotonicCaptureTime,
+    nativeSettings: () => extension_settings.memory_graph,
+    allowedEndpoint: () => {
+        const match = matchGatewayEndpoint(activeEndpointSettings(oai_settings), getSettings().endpointPattern);
+        try { return match.matched && new URL(match.value).origin === new URL(getSettings().gatewayBaseUrl).origin; } catch { return false; }
+    },
+});
+globalThis.TavernGatewayMemoryBridgeIntercept = memoryFeatures.interceptor;
 autoConfigureGateway();
 if (event_types.GENERATION_STARTED) {
     eventSource.on(event_types.GENERATION_STARTED, onGenerationStarted);

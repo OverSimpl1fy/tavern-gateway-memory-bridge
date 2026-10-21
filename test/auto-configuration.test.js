@@ -77,6 +77,7 @@ async function host(initial = {}, persistent = storage()) {
     const events = new Map();
     let saves = 0;
     const bindings = { ...core, createTokenStore, document, extension_settings: settings, oai_settings: active, saveSettingsDebounced: () => saves++, getCurrentUserHandle: () => 'alice', localStorage: persistent, sessionStorage: storage(), getContext: () => ({ chatId: 'chat-fixture', chat: [{ is_user: true, mes: '用户' }] }), event_types: { CHAT_COMPLETION_SETTINGS_READY: 'ready' }, eventSource: { on: (name, fn) => events.set(name, fn) }, jQuery: () => {}, globalThis: { crypto: globalThis.crypto }, console };
+    bindings.createMemoryFeatures = () => ({ bindUi() {}, changed() {}, attachCut() {}, hasAppliedCut() { return false; }, accept: async () => {} });
     const api = new Function(...Object.keys(bindings), source + '\nreturn { bindSettingsUi, onChatCompletionSettingsReady, readGatewayToken, autoConfigureGateway, getSettings };')(...Object.values(bindings));
     api.bindSettingsUi();
     return { api, controls, settings, active, events, persistent, saves: () => saves };

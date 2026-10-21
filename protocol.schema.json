@@ -43,6 +43,16 @@
       "description": "Actual MESSAGE_RECEIVED chat[] floor. On a sideband manifest targetFloor is rewritten to this settled floor."
     },
     "generationType": { "type": "string", "maxLength": 80 },
+    "contextCut": {
+      "type": "object",
+      "required": ["toFloor"],
+      "properties": { "toFloor": { "type": "integer", "minimum": 0 } },
+      "additionalProperties": false,
+      "description": "Explicit real-floor range 0..toFloor omitted by the generation interceptor only after verified synopsis coverage; never a raw-chat deletion."
+    },
+    "action": { "enum": ["reconcile", "status", "backfill"] },
+    "world": { "type": "string", "maxLength": 80 },
+    "toFloor": { "type": "integer", "minimum": 0 },
     "endpoint": { "type": "string", "maxLength": 2048 },
     "chatId": { "type": "string", "minLength": 1, "maxLength": 2000 },
     "clientChatId": { "type": "string", "minLength": 1, "maxLength": 2000 },

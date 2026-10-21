@@ -14,6 +14,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     maxCharsPerMessage: 16000,
     maxTotalTextChars: 240000,
     sidebandEnabled: false,
+    cleanHistory: true,
+    nativeMirror: true,
     gatewayBaseUrl: '',
     debug: false,
 });
@@ -61,6 +63,8 @@ export function normalizeSettings(raw = {}) {
         maxCharsPerMessage: clampInteger(settings.maxCharsPerMessage, DEFAULT_SETTINGS.maxCharsPerMessage, 1024, 100000),
         maxTotalTextChars: clampInteger(settings.maxTotalTextChars, DEFAULT_SETTINGS.maxTotalTextChars, 20000, 2000000),
         sidebandEnabled: settings.sidebandEnabled === true,
+        cleanHistory: settings.cleanHistory !== false,
+        nativeMirror: settings.nativeMirror !== false,
         gatewayBaseUrl: safeString(settings.gatewayBaseUrl, 2048).trim(),
         debug: settings.debug === true,
     };
