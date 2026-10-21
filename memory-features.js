@@ -41,7 +41,7 @@ export function createMemoryFeatures({ getSettings, getContext, currentIdentity,
     }
 
     async function mirror(body, context, key) {
-        if (!getSettings().nativeMirror || !body.memory?.nodes?.length) return true;
+        if (!getSettings().nativeMirror) return true;
         if (mirrorTasks.has(key)) return false;
         const mirrorStatus = message => { const element = document.querySelector('#tgm-memory-mirror-status'); if (element) element.textContent = message; };
         const version = epoch;
@@ -88,7 +88,7 @@ export function createMemoryFeatures({ getSettings, getContext, currentIdentity,
         const signature = JSON.stringify([body.memory.nodes, body.memory.edges]);
         body._signature = signature;
         body._mirrored = signature === previous?._signature && previous?._mirrored === true;
-        if (!busy && !body._mirrored) body._mirrored = await mirror(body, context, key);
+        if ((!busy || !body.memory.nodes?.length) && !body._mirrored) body._mirrored = await mirror(body, context, key);
     }
 
     async function refresh() {

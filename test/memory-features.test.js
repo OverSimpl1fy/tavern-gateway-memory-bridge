@@ -46,6 +46,8 @@ test('kernel history mapping preserves real floors across hidden system messages
     const rows = chat(); rows.splice(1, 0, { is_system: true, is_user: false, mes: '系统标记' });
     const core = rows.filter(row => !row.is_system).map((row, index) => ({ ...row, index }));
     assert.deepEqual(mapCoreFloors(core, rows), [0, 2, 3, 4]);
+    const merged = core.map(row => ({ ...row })); merged[1].extra = { tool_invocations: [{ id: 'synthetic' }] };
+    assert.equal(mapCoreFloors(merged, rows), null, 'tool-summary spans are not guessed from their first index');
     delete core[1].index;
     assert.equal(mapCoreFloors(core, rows), null);
 });
@@ -116,4 +118,14 @@ test('native manual memories, stale swipes and unsafe native settings are preser
     assert.equal((await mirrorGatewayMemory(options)).state, 'stale');
     assert.equal((await mirrorGatewayMemory({ ...options, nativeSettings: { enabled: true } })).state, 'settings-required');
     assert.ok(fixture.graph.has('foreign'));
+});
+
+test('an empty authoritative graph removes stale owned NPC mirrors while preserving unrelated native data', async () => {
+    const rows = chat(), fixture = nativeFixture(rows), data = await memory(rows);
+    const options = { context: fixture.context, memory: data, stillCurrent: () => true, nativeSettings: { enabled: false, autoExtractionEnabled: false } };
+    assert.equal((await mirrorGatewayMemory(options)).state, 'synced');
+    fixture.graph.set('manual', { id: 'manual' });
+    const empty = { ...data, nodes: [], edges: [], sourceProof: [], plot: { coveredThrough: -1, parts: [] }, checkpoint: { floor: -1 } };
+    assert.equal((await mirrorGatewayMemory({ ...options, memory: empty })).state, 'synced');
+    assert.deepEqual([...fixture.graph.keys()], ['manual']);
 });

@@ -1,6 +1,6 @@
 {
   "name": "tavern-gateway-memory-bridge",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": true,
   "type": "module",
   "description": "SillyTavern/Luker client bridge for Tavern Gateway floor-aware memory.",

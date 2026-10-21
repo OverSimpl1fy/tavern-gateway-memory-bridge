@@ -16,14 +16,17 @@ export async function mirrorGatewayMemory({ context, memory, stillCurrent, nativ
     if (!api?.openSession || !api.getNodeById || !context?.getChatState || !context?.updateChatState) {
         return { state: 'unsupported', message: '当前 Luker 未提供可持久化记忆接口；网关记忆正常，手机镜像未写入。' };
     }
-    if (!await plotIsLive({ parts: [{ sourceAnchors: memory.sourceProof || [] }] }, context.chat)) {
+    const hasNodes = (memory.nodes || []).length > 0;
+    if (hasNodes && !await plotIsLive({ parts: [{ sourceAnchors: memory.sourceProof || [] }] }, context.chat)) {
         return { state: 'stale', message: '记忆来源与当前楼层不一致，等待重新对账；未写入旧分支。' };
     }
     const target = context.resolveChatStateTarget?.();
     if (!target) throw new Error('无法绑定当前聊天的原生记忆目录。');
     const loaded = await context.getChatState(NAMESPACE, { target });
     const mapping = loaded?.ok && loaded.state?.nodes ? structuredClone(loaded.state) : { version: 1, nodes: {}, edges: [] };
-    const lastFloor = memory.plot?.parts?.at(-1)?.to ?? memory.checkpoint?.floor;
+    if (!hasNodes && Object.keys(mapping.nodes).length === 0) return { state: 'synced', message: '当前暂无有效网关记忆，手机镜像没有旧节点需要清理。' };
+    const lastFloor = hasNodes ? (memory.plot?.parts?.at(-1)?.to ?? memory.checkpoint?.floor)
+        : context.chat.findLastIndex(row => row?.is_user === false && String(row.mes || '').trim());
     if (!Number.isInteger(lastFloor) || lastFloor < 0 || !stillCurrent()) return { state: 'waiting', message: '等待第一份有效记忆。' };
     const anchorContext = { ...context, chat: context.chat.slice(0, lastFloor + 1) };
     const session = await api.openSession(anchorContext);
@@ -34,7 +37,7 @@ export async function mirrorGatewayMemory({ context, memory, stillCurrent, nativ
     }
     const owned = new Set(Object.values(mapping.nodes).map(row => row.id));
     const foreign = session.listVisibleCandidates().filter(row => !owned.has(row.id));
-    if (foreign.length) return { state: 'conflict', message: '检测到原生图已有其它记忆。已保留这些内容并暂停镜像；网关记忆仍正常，不会覆盖或混合。' };
+    if (foreign.length && hasNodes) return { state: 'conflict', message: '检测到原生图已有其它记忆。已保留这些内容并暂停镜像；网关记忆仍正常，不会覆盖或混合。' };
 
     const persist = async () => {
         const saved = await context.updateChatState(NAMESPACE, () => structuredClone(mapping), { target });

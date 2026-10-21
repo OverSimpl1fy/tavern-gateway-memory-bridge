@@ -52,6 +52,9 @@ export async function plotIsLive(plot, chat) {
 // Match the verified kernel projection, including optional system tool rows.
 // If another extension changes that contract, retain history instead of guessing.
 export function mapCoreFloors(core, chat) {
+    // Kernel tool-summary merges can cover more than the representative
+    // `index` floor. Keep all history rather than cut across that unknown span.
+    if (core.some(row => row?.extra?.tool_invocations?.length || row?.tool_calls?.length)) return null;
     const candidates = [
         chat.map((row, floor) => ({ row, floor })).filter(x => !x.row?.is_system),
         chat.map((row, floor) => ({ row, floor })).filter(x => !x.row?.is_system || Array.isArray(x.row?.extra?.tool_invocations)),
